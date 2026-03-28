@@ -1,0 +1,600 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary-color: #3498db;
+    --primary-hover: #2980b9;
+    --danger-color: #e74c3c;
+    --danger-hover: #c0392b;
+    --text-primary: #2c3e50;
+    --text-secondary: #7f8c8d;
+    --bg-color: #f5f7fa;
+    --sidebar-bg: #ffffff;
+    --border-color: #e1e8ed;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--bg-color);
+    height: 100vh;
+    color: var(--text-primary);
+}
+
+/* 布局 */
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+/* 侧边栏 */
+.sidebar {
+    width: 320px;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow);
+}
+
+.sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.logo i {
+    font-size: 22px;
+}
+
+/* 搜索框 */
+.search-box {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+}
+
+.search-box i {
+    position: absolute;
+    left: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+}
+
+.search-box input {
+    width: 100%;
+    padding: 10px 10px 10px 35px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.search-box input:focus {
+    border-color: var(--primary-color);
+}
+
+/* 笔记列表 */
+.notes-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.note-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    margin-bottom: 8px;
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.note-item:hover {
+    background-color: #e8f4fc;
+    border-color: var(--primary-color);
+    transform: translateX(4px);
+}
+
+.note-item.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.note-item.active .note-meta {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.note-item.active .note-icon {
+    color: white;
+}
+
+.note-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary-color), #5dade2);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-right: 12px;
+    font-size: 14px;
+}
+
+.note-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.note-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.note-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.note-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.note-item:hover .note-actions {
+    opacity: 1;
+}
+
+.btn-icon {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.edit-btn:hover {
+    color: var(--primary-color);
+}
+
+.delete-btn:hover {
+    color: var(--danger-color);
+}
+
+/* 侧边栏底部 */
+.sidebar-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+/* 按钮样式 */
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+}
+
+/* 主内容区 */
+.main-content {
+    flex: 1;
+    padding: 30px;
+    overflow-y: auto;
+    background-color: var(--bg-color);
+}
+
+.preview {
+    background-color: white;
+    padding: 30px;
+    border-radius: 12px;
+    min-height: calc(100vh - 60px);
+    box-shadow: var(--shadow);
+}
+
+/* 欢迎页面 */
+.welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 60vh;
+    text-align: center;
+}
+
+.welcome-icon {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, #a8dadc, #457b9d);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    font-size: 40px;
+    color: white;
+}
+
+.welcome h2 {
+    font-size: 24px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.welcome p {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+}
+
+.quick-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.action-btn {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(52, 152, 219, 0.4);
+}
+
+/* 空状态 */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.error-msg {
+    padding: 20px;
+    text-align: center;
+    color: var(--danger-color);
+}
+
+.error-msg i {
+    margin-right: 8px;
+}
+
+/* Markdown 内容样式 */
+.markdown-body {
+    line-height: 1.9;
+    color: var(--text-primary);
+    font-size: 15px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+    margin-top: 32px;
+    margin-bottom: 20px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.markdown-body h1 {
+    font-size: 2.2em;
+    padding-bottom: 16px;
+    border-bottom: 3px solid;
+    border-image: linear-gradient(90deg, var(--primary-color), #5dade2) 1;
+    text-align: center;
+    background: linear-gradient(120deg, transparent 0%, transparent 50%, rgba(52, 152, 219, 0.05) 50%, rgba(52, 152, 219, 0.05) 100%);
+    padding: 20px 0;
+}
+
+.markdown-body h2 {
+    font-size: 1.6em;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+    padding-left: 20px;
+}
+
+.markdown-body h2::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 24px;
+    background: linear-gradient(180deg, var(--primary-color), #5dade2);
+    border-radius: 2px;
+}
+
+.markdown-body h3 {
+    font-size: 1.3em;
+    color: #34495e;
+}
+
+.markdown-body h4 {
+    font-size: 1.1em;
+    color: #57606f;
+}
+
+.markdown-body p {
+    margin-bottom: 20px;
+    text-align: justify;
+}
+
+.markdown-body code {
+    padding: 3px 8px;
+    margin: 0 4px;
+    font-size: 0.9em;
+    background: linear-gradient(135deg, #f1f3f5, #e9ecef);
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+    color: #e74c3c;
+    border: 1px solid #dee2e6;
+}
+
+.markdown-body pre {
+    padding: 20px;
+    overflow: auto;
+    font-size: 0.9em;
+    line-height: 1.6;
+    background: linear-gradient(135deg, #1e1e1e, #2d2d2d);
+    border-radius: 12px;
+    margin: 24px 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    position: relative;
+}
+
+.markdown-body pre::before {
+    content: 'CODE';
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 10px;
+    color: #666;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+.markdown-body pre code {
+    padding: 0;
+    background: transparent;
+    color: #d4d4d4;
+    border: none;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+    padding-left: 2em;
+    margin-bottom: 20px;
+}
+
+.markdown-body li {
+    margin-bottom: 10px;
+    position: relative;
+    padding-left: 8px;
+}
+
+.markdown-body ul li::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 10px;
+    width: 6px;
+    height: 6px;
+    background: linear-gradient(135deg, var(--primary-color), #5dade2);
+    border-radius: 50%;
+}
+
+.markdown-body ol {
+    counter-reset: item;
+}
+
+.markdown-body ol li {
+    counter-increment: item;
+    list-style-type: none;
+}
+
+.markdown-body ol li::before {
+    content: counter(item);
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, var(--primary-color), #5dade2);
+    color: white;
+    border-radius: 50%;
+    font-size: 11px;
+    text-align: center;
+    line-height: 20px;
+    margin-right: 8px;
+}
+
+.markdown-body blockquote {
+    padding: 16px 20px;
+    color: #59626a;
+    border-left: 4px solid;
+    border-image: linear-gradient(180deg, var(--primary-color), #5dade2) 1;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    margin: 24px 0;
+    border-radius: 0 8px 8px 0;
+    position: relative;
+    font-style: italic;
+}
+
+.markdown-body blockquote::before {
+    content: '"';
+    font-size: 48px;
+    color: var(--primary-color);
+    opacity: 0.3;
+    position: absolute;
+    top: -10px;
+    left: 10px;
+    font-family: Georgia, serif;
+}
+
+.markdown-body img {
+    max-width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    margin: 20px 0;
+    transition: transform 0.3s;
+}
+
+.markdown-body img:hover {
+    transform: scale(1.02);
+}
+
+.markdown-body table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin-bottom: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.markdown-body table th,
+.markdown-body table td {
+    padding: 14px 18px;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-body table th {
+    background: linear-gradient(135deg, var(--primary-color), #5dade2);
+    color: white;
+    font-weight: 600;
+    text-align: left;
+}
+
+.markdown-body table tr:hover td {
+    background-color: #f8f9fa;
+}
+
+.markdown-body table tr:last-child td {
+    border-bottom: none;
+}
+
+.markdown-body a {
+    color: var(--primary-color);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.markdown-body a:hover {
+    border-bottom-color: var(--primary-color);
+}
+
+.markdown-body hr {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
+    margin: 32px 0;
+}
+
+.markdown-body strong {
+    color: #2c3e50;
+    font-weight: 600;
+    background: linear-gradient(120deg, transparent 0%, transparent 50%, rgba(52, 152, 219, 0.1) 50%, rgba(52, 152, 219, 0.1) 100%);
+    padding: 0 4px;
+}
+
+.markdown-body em {
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+.markdown-body a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body hr {
+    border: none;
+    border-top: 2px solid var(--border-color);
+    margin: 24px 0;
+}

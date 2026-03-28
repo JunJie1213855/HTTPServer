@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown 笔记</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 - 笔记列表 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-book-open"></i>
+                    <span>我的笔记</span>
+                </div>
+                <button id="newNoteBtn" class="btn-primary">
+                    <i class="fas fa-plus"></i> 新建
+                </button>
+            </div>
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchInput" placeholder="搜索笔记...">
+            </div>
+            <div id="notesList" class="notes-list">
+                <!-- 笔记列表 -->
+            </div>
+            <div class="sidebar-footer">
+                <span id="noteCount">0 篇笔记</span>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div id="preview" class="preview">
+                <div class="welcome">
+                    <div class="welcome-icon">
+                        <i class="fas fa-feather-alt"></i>
+                    </div>
+                    <h2>欢迎使用 Markdown 笔记</h2>
+                    <p>从左侧选择一个笔记开始编辑，或点击"新建"创建新笔记</p>
+                    <div class="quick-actions">
+                        <button class="action-btn" onclick="document.getElementById('newNoteBtn').click()">
+                            <i class="fas fa-plus-circle"></i> 创建新笔记
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = '/api/notes';
+        let allNotes = [];
+
+        // 加载笔记列表
+        async function loadNotes() {
+            try {
+                const response = await fetch(API_BASE);
+                const notes = await response.json();
+                allNotes = notes;
+                renderNotesList(notes);
+                document.getElementById('noteCount').textContent = `${notes.length} 篇笔记`;
+            } catch (error) {
+                console.error('加载笔记列表失败:', error);
+                document.getElementById('notesList').innerHTML = '<div class="error-msg"><i class="fas fa-exclamation-circle"></i> 加载失败</div>';
+            }
+        }
+
+        // 渲染笔记列表
+        function renderNotesList(notes) {
+            const container = document.getElementById('notesList');
+            if (notes.length === 0) {
+                container.innerHTML = '<div class="empty-state"><i class="fas fa-file-alt"></i><p>暂无笔记</p></div>';
+                return;
+            }
+
+            container.innerHTML = notes.map(note => `
+                <div class="note-item" data-name="${note.name}">
+                    <div class="note-icon">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="note-info">
+                        <div class="note-title">${note.title || note.name}</div>
+                        <div class="note-meta">${note.name}.md</div>
+                    </div>
+                    <div class="note-actions">
+                        <button class="btn-icon edit-btn" data-name="${note.name}" title="编辑">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn-icon delete-btn" data-name="${note.name}" title="删除">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            // 绑定点击事件 - 跳转到编辑器
+            container.querySelectorAll('.note-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    if (!e.target.closest('.note-actions')) {
+                        const name = item.dataset.name;
+                        window.location.href = `/editor.html?name=${encodeURIComponent(name)}`;
+                    }
+                });
+            });
+
+            // 绑定编辑按钮
+            container.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.location.href = `/editor.html?name=${encodeURIComponent(btn.dataset.name)}`;
+                });
+            });
+
+            // 绑定删除事件
+            container.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteNote(btn.dataset.name);
+                });
+            });
+        }
+
+        // 搜索功能
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const keyword = e.target.value.toLowerCase();
+            const filtered = allNotes.filter(note => {
+                const title = (note.title || '').toLowerCase();
+                const name = (note.name || '').toLowerCase();
+                return title.includes(keyword) || name.includes(keyword);
+            });
+            renderNotesList(filtered);
+        });
+
+        // 删除笔记
+        async function deleteNote(name) {
+            if (!confirm(`确定要删除笔记 "${name}" 吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/${name}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    loadNotes();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('删除笔记失败:', error);
+            }
+        }
+
+        // 新建笔记
+        document.getElementById('newNoteBtn').addEventListener('click', () => {
+            window.location.href = '/editor.html';
+        });
+
+        // 初始化
+        loadNotes();
+    </script>
+</body>
+</html>
