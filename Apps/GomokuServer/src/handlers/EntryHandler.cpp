@@ -1,0 +1,23 @@
+#include "../include/handlers/EntryHandler.h"
+#include "../include/ResourceManager.h"
+
+void EntryHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
+{
+    std::string reqFile = ResourceManager::instance().getPath("entry");
+    FileUtil fileOperater(reqFile);
+    if (!fileOperater.isValid())
+    {
+        LOG_WARN << reqFile << " not exist";
+        fileOperater.resetDefaultFile();
+    }
+
+    std::vector<char> buffer(fileOperater.size());
+    fileOperater.readFile(buffer);
+    std::string bufStr = std::string(buffer.data(), buffer.size());
+
+    resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+    resp->setCloseConnection(false);
+    resp->setContentType("text/html");
+    resp->setContentLength(bufStr.size());
+    resp->setBody(bufStr);
+}

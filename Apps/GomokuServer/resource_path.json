@@ -1,0 +1,7 @@
+{
+    "Backend": "Apps/GomokuServer/resource/Backend.html",
+    "ChessGameVsAi"  : "Apps/GomokuServer/resource/ChessGameVsAi.html",
+    "entry":"Apps/GomokuServer/resource/entry.html",
+    "menu" : "Apps/GomokuServer/resource/menu.html",
+    "NotFound" : "Apps/GomokuServer/resource/NotFound.html"
+}
