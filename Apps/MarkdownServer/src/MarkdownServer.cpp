@@ -1,6 +1,7 @@
 #include "MarkdownServer.h"
 #include "../../../HttpServer/include/middleware/compress/CompressMiddleware.h"
 #include "../../../HttpServer/include/middleware/ratelimit/RateLimitMiddleware.h"
+#include "../../../HttpServer/include/middleware/logging/LoggingMiddleware.h"
 #include <algorithm>
 #include <sstream>
 #include <fstream>
@@ -84,7 +85,9 @@ void MarkdownServer::initializeMiddleware()
     auto corsMiddleware = std::make_shared<http::middleware::CorsMiddleware>();
     auto rateLimitMiddleware = std::make_shared<http::middleware::RateLimitMiddleware>();
     auto compressMiddleware = std::make_shared<http::middleware::CompressMiddleware>();
+    auto loggingMiddleware = std::make_shared<http::middleware::LoggingMiddleware>("Apps/MarkdownServer/access.log");
     // 添加中间件
+    httpServer_.addMiddleware(loggingMiddleware);
     httpServer_.addMiddleware(corsMiddleware);
     httpServer_.addMiddleware(rateLimitMiddleware);
     httpServer_.addMiddleware(compressMiddleware);

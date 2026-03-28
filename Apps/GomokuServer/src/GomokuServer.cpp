@@ -13,6 +13,7 @@
 #include "../../../HttpServer/include/http/HttpServer.h"
 #include "../../../HttpServer/include/middleware/compress/CompressMiddleware.h"
 #include "../../../HttpServer/include/middleware/ratelimit/RateLimitMiddleware.h"
+#include "../../../HttpServer/include/middleware/logging/LoggingMiddleware.h"
 
 using namespace http;
 
@@ -66,7 +67,9 @@ void GomokuServer::initializeMiddleware()
     auto corsMiddleware = std::make_shared<http::middleware::CorsMiddleware>();
     auto rateLimitMiddleware = std::make_shared<http::middleware::RateLimitMiddleware>();
     auto compressMiddleware = std::make_shared<http::middleware::CompressMiddleware>();
+    auto loggingMiddleware = std::make_shared<http::middleware::LoggingMiddleware>("Apps/GomokuServer/access.log");
     // 添加中间件
+    httpServer_.addMiddleware(loggingMiddleware);
     httpServer_.addMiddleware(rateLimitMiddleware);
     httpServer_.addMiddleware(corsMiddleware);
     httpServer_.addMiddleware(compressMiddleware);
