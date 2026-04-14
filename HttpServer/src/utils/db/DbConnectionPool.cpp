@@ -39,7 +39,7 @@ namespace http
         DbConnectionPool::DbConnectionPool()
         {
             checkThread_ = std::thread(&DbConnectionPool::checkConnections, this);
-            checkThread_.detach();
+            // checkThread_.detach();
         }
 
         DbConnectionPool::~DbConnectionPool()
@@ -49,6 +49,8 @@ namespace http
             {
                 connections_.pop();
             }
+            if(checkThread_.joinable())
+                checkThread_.join();
             LOG_INFO << "Database connection pool destroyed";
         }
 

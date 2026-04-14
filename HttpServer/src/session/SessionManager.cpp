@@ -21,18 +21,18 @@ std::shared_ptr<Session> SessionManager::getSession(const HttpRequest& req, Http
     
     std::shared_ptr<Session> session;
 
-    if (!sessionId.empty())
+    if (!sessionId.empty())              // session 已经存在 
     {
         session = storage_->load(sessionId);
     }
 
-    if (!session || session->isExpired())
+    if (!session || session->isExpired()) // session 不存在或者过期了
     {
         sessionId = generateSessionId();
         session = std::make_shared<Session>(sessionId, this);
         setSessionCookie(sessionId, resp);
     }
-    else 
+    else                                 // 存在就设置会话管理器
     {
         session->setManager(this); // 为现有会话设置管理器
     }
