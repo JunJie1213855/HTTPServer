@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 查找依赖
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(GTest REQUIRED)
+
+# 启用测试
+enable_testing()
 
 # 添加头文件路径
 include_directories(
@@ -77,3 +81,24 @@ target_link_libraries(gomoku_server
 message(STATUS "HTTP Server sources: ${HTTP_SERVER_SRC}")
 message(STATUS "Markdown Server sources: ${MARKDOWN_SERVER_SRC}")
 message(STATUS "Gomoku Server sources: ${GOMOKU_SERVER_SRC}")
+
+# ==================== Session Tests ====================
+add_executable(session_test
+    tests/SessionTest.cpp
+    HttpServer/src/session/Session.cpp
+    HttpServer/src/session/SessionManager.cpp
+    HttpServer/src/session/SessionStorage.cpp
+    HttpServer/src/http/HttpRequest.cpp
+    HttpServer/src/http/HttpResponse.cpp
+)
+target_link_libraries(session_test
+    GTest::GTest
+    GTest::Main
+    pthread
+    muduo_net
+    muduo_base
+)
+target_include_directories(session_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/HttpServer/include
+)
+add_test(NAME session_test COMMAND session_test)
