@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CORSMIDDLEWARE_H_
+#define CORSMIDDLEWARE_H_
 
 #include "../Middleware.h"
 #include "../../http/HttpRequest.h"
@@ -31,3 +32,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

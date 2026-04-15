@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LOGOUTHANDLER_H_
+#define LOGOUTHANDLER_H_
 #include "../../../../HttpServer/include/router/RouterHandler.h"
 #include "../GomokuServer.h"
 #include "../../../HttpServer/include/utils/JsonUtil.h"
@@ -11,3 +12,4 @@ public:
 private:
     GomokuServer* server_;
 };
+#endif

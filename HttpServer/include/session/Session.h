@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SESSION_H_
+#define SESSION_H_
 
 #include <memory>
 #include <string>
@@ -52,3 +53,4 @@ namespace http
 
     } // namespace session
 } // namespace http
+#endif

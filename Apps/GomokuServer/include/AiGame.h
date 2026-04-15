@@ -1,4 +1,5 @@
-#pragma once
+#ifndef AIGAME_H_
+#define AIGAME_H_
 
 #include <cstdlib>
 #include <ctime>
@@ -90,3 +91,4 @@ private:
     std::vector<std::vector<std::string>> board_;
     mutable std::mutex                    mutex_;  // 添加互斥锁
 };
+#endif

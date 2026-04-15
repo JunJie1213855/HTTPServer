@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DBCONNECTIONPOOL_H_
+#define DBCONNECTIONPOOL_H_
 #include <queue>
 #include <mutex>
 #include <condition_variable>
@@ -59,3 +60,4 @@ namespace http
 
     } // namespace db
 } // namespace http
+#endif

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LOGGINGMIDDLEWARE_H_
+#define LOGGINGMIDDLEWARE_H_
 
 #include <string>
 #include <fstream>
@@ -41,3 +42,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

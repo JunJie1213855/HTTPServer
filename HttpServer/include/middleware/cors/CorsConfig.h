@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CORSCONFIG_H_
+#define CORSCONFIG_H_
 
 #include <string>
 #include <vector>
@@ -28,3 +29,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef HTTPRESPONSE_H_
+#define HTTPRESPONSE_H_
 
 #include <muduo/net/TcpServer.h>
 
@@ -108,3 +109,4 @@ namespace http
     };
 
 } // namespace http
+#endif

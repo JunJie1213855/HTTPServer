@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RATELIMITMIDDLEWARE_H_
+#define RATELIMITMIDDLEWARE_H_
 
 #include <string>
 #include <deque>
@@ -45,3 +46,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

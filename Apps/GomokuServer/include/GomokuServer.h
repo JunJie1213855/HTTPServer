@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GOMOKUSERVER_H_
+#define GOMOKUSERVER_H_
 
 #include <atomic>
 #include <memory>
@@ -120,3 +121,4 @@ private:
     // 最高在线人数
     std::atomic<int>                                 maxOnline_;
 };
+#endif

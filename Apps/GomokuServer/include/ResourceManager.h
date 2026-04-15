@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RESOURCEMANAGER_H_
+#define RESOURCEMANAGER_H_
 
 #include <string>
 #include <unordered_map>
@@ -69,3 +70,4 @@ private:
     std::mutex mutex_;
     std::unordered_map<std::string, std::string> resources_;
 };
+#endif

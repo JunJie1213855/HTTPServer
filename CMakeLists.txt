@@ -13,23 +13,35 @@ find_package(GTest REQUIRED)
 # 启用测试
 enable_testing()
 
+# MySQL Connector/C++ 9.5
+set(MYSQL_CONCPP_DIR "/usr/local/mysql/connector-c++-9.5.0")
+set(MYSQL_CONCPP_INCLUDE "${MYSQL_CONCPP_DIR}/include/jdbc" "${MYSQL_CONCPP_DIR}/include/mysqlx")
+set(MYSQL_CONCPP_LIB "${MYSQL_CONCPP_DIR}/lib64/debug")
+
+# nlohmann json
+set(NLOHMANN_JSON_INCLUDE "/home/ros/miniconda3/include")
+
 # 添加头文件路径
 include_directories(
     ${PROJECT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/HttpServer/include
     ${PROJECT_SOURCE_DIR}/Apps/MarkdownServer/include
     ${PROJECT_SOURCE_DIR}/Apps/GomokuServer/include
-    /usr/include/mysql-cppconn-8
-    /usr/include/mysql
+    ${MYSQL_CONCPP_INCLUDE}
+    ${NLOHMANN_JSON_INCLUDE}
     ${OPENSSL_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
 )
 
 # 查找 MySQL 库
 find_library(MYSQLCPPCONN_LIBRARY
-    NAMES mysqlcppconn mysqlcppconn8
-    PATHS /usr/lib /usr/lib64 /usr/local/lib
+    NAMES mysqlcppconn mysqlcppconn9 mysqlcppconn
+    PATHS ${MYSQL_CONCPP_DIR}/lib64
+    NO_DEFAULT_PATH
 )
+
+# 添加库搜索路径
+link_directories(${MYSQL_CONCPP_LIB})
 
 # HttpServer 核心源文件
 file(GLOB_RECURSE HTTP_SERVER_SRC
@@ -102,3 +114,35 @@ target_include_directories(session_test PRIVATE
     ${PROJECT_SOURCE_DIR}/HttpServer/include
 )
 add_test(NAME session_test COMMAND session_test)
+
+# ==================== HttpRequest Tests ====================
+add_executable(http_request_test
+    tests/HttpRequestTest.cpp
+    HttpServer/src/http/HttpRequest.cpp
+)
+target_link_libraries(http_request_test
+    GTest::GTest
+    GTest::Main
+    muduo_base
+)
+target_include_directories(http_request_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/HttpServer/include
+)
+add_test(NAME http_request_test COMMAND http_request_test)
+
+# ==================== HttpContext Tests ====================
+add_executable(http_context_test
+    tests/HttpContextTest.cpp
+    HttpServer/src/http/HttpContext.cpp
+    HttpServer/src/http/HttpRequest.cpp
+)
+target_link_libraries(http_context_test
+    GTest::GTest
+    GTest::Main
+    muduo_net
+    muduo_base
+)
+target_include_directories(http_context_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/HttpServer/include
+)
+add_test(NAME http_context_test COMMAND http_context_test)

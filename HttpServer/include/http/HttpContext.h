@@ -1,4 +1,5 @@
-#pragma once
+#ifndef HTTPCONTEXT_H_
+#define HTTPCONTEXT_H_
 
 #include <iostream>
 
@@ -57,3 +58,4 @@ namespace http
     };
 
 } // namespace http
+#endif

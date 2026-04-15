@@ -1,4 +1,5 @@
-#pragma once
+#ifndef REGISTERHANDLER_H_
+#define REGISTERHANDLER_H_
 #include "../../../../HttpServer/include/router/RouterHandler.h"
 #include "../../../HttpServer/include/utils/MysqlUtil.h"
 #include "../GomokuServer.h"
@@ -16,3 +17,4 @@ private:
     GomokuServer* server_;
     http::MysqlUtil     mysqlUtil_;
 };
+#endif

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef HTTPSERVER_H_
+#define HTTPSERVER_H_
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -142,3 +143,4 @@ namespace http
     };
 
 } // namespace http
+#endif

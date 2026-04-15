@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DBEXCEPTION_H_
+#define DBEXCEPTION_H_
 #include <stdexcept>
 #include <string>
 
@@ -19,3 +20,4 @@ namespace http
 
     } // namespace db
 } // namespace http
+#endif

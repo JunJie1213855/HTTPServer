@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MIDDLEWARECHAIN_H_
+#define MIDDLEWARECHAIN_H_
 
 #include <vector>
 #include <memory>
@@ -31,3 +32,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

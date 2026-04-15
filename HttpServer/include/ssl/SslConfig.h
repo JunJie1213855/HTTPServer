@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SSLCONFIG_H_
+#define SSLCONFIG_H_
 #include "SslTypes.h"
 #include <string>
 #include <vector>
@@ -53,3 +54,4 @@ private:
 };
 
 } // namespace ssl
+#endif

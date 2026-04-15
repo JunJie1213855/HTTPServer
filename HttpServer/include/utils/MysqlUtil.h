@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MYSQLUTIL_H_
+#define MYSQLUTIL_H_
 #include "db/DbConnectionPool.h"
 
 #include <string>
@@ -34,3 +35,4 @@ namespace http
     };
 
 } // namespace http
+#endif

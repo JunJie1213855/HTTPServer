@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MARKDOWNSERVER_H_
+#define MARKDOWNSERVER_H_
 
 #include <string>
 #include <memory>
@@ -52,3 +53,4 @@ private:
     http::HttpServer httpServer_;
     std::string notesDir_;
 };
+#endif

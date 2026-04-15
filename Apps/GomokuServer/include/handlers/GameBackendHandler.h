@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GAMEBACKENDHANDLER_H_
+#define GAMEBACKENDHANDLER_H_
 #include "../../../../HttpServer/include/router/RouterHandler.h"
 #include "../GomokuServer.h"
 
@@ -12,3 +13,4 @@ public:
 private:
     GomokuServer* server_;
 };
+#endif

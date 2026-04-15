@@ -1,4 +1,5 @@
-#pragma once
+#ifndef HTTPREQUEST_H_
+#define HTTPREQUEST_H_
 
 #include <map>
 #include <string>
@@ -104,3 +105,4 @@ namespace http
     };
 
 } // namespace http
+#endif

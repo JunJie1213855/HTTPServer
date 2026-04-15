@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ROUTER_H_
+#define ROUTER_H_
 #include <iostream>
 #include <unordered_map>
 #include <string>
@@ -116,3 +117,4 @@ namespace http
 
     } // namespace router
 } // namespace http
+#endif

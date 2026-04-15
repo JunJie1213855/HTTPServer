@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ROUTERHANDLER_H_
+#define ROUTERHANDLER_H_
 #include <string>
 #include <memory>
 #include "../http/HttpRequest.h"
@@ -19,3 +20,4 @@ namespace http
 
     } // namespace router
 } // namespace http
+#endif

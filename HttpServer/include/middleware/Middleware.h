@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MIDDLEWARE_H_
+#define MIDDLEWARE_H_
 
 #include "../http/HttpRequest.h"
 #include "../http/HttpResponse.h"
@@ -31,3 +32,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

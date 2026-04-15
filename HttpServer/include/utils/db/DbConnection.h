@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DBCONNECTION_H_
+#define DBCONNECTION_H_
 #include <memory>
 #include <string>
 #include <mutex>
@@ -106,3 +107,4 @@ namespace http
 
     } // namespace db
 } // namespace http
+#endif

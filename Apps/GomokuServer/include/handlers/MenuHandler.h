@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MENUHANDLER_H_
+#define MENUHANDLER_H_
 
 #include "../../../HttpServer/include/router/RouterHandler.h"
 #include "../GomokuServer.h"
@@ -13,3 +14,4 @@ public:
 private:
     GomokuServer* server_;
 };
+#endif

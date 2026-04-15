@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SSLTYPES_H_
+#define SSLTYPES_H_
 #include <string>
 
 namespace ssl 
@@ -34,3 +35,4 @@ enum class SSLState
 };
 
 } // namespace ssl
+#endif

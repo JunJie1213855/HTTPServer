@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SESSIONMANAGER_H_
+#define SESSIONMANAGER_H_
 
 #include "SessionStorage.h"
 #include "../http/HttpRequest.h"
@@ -43,3 +44,4 @@ namespace http
 
     } // namespace session
 } // namespace http
+#endif

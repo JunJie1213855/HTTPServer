@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FILEUTIL_H_
+#define FILEUTIL_H_
 
 #include <fstream>
 #include <string>
@@ -63,3 +64,4 @@ private:
     std::ifstream file_;
     inline static std::string defaultNotFoundPath_ = "Apps/GomokuServer/resource/NotFound.html";
 };
+#endif

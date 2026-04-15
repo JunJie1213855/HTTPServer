@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COMPRESSMIDDLEWARE_H_
+#define COMPRESSMIDDLEWARE_H_
 
 #include <string>
 
@@ -36,3 +37,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

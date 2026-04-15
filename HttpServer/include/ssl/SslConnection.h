@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SSLCONNECTION_H_
+#define SSLCONNECTION_H_
 #include "SslContext.h"
 #include <muduo/net/TcpConnection.h>
 #include <muduo/net/Buffer.h>
@@ -55,3 +56,4 @@ private:
 };
 
 } // namespace ssl
+#endif

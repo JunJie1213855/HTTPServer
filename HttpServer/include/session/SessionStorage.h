@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SESSIONSTORAGE_H_
+#define SESSIONSTORAGE_H_
 #include "Session.h"
 #include <memory>
 #include <mutex>
@@ -32,3 +33,4 @@ namespace http
 
     } // namespace session
 } // namespace http
+#endif

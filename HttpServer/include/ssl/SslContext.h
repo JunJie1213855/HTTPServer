@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SSLCONTEXT_H_
+#define SSLCONTEXT_H_
 #include "SslConfig.h"
 #include <openssl/ssl.h>
 #include <memory>
@@ -28,3 +29,4 @@ private:
 };
 
 } // namespace ssl
+#endif

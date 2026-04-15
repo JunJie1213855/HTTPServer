@@ -1,4 +1,5 @@
-#pragma once
+#ifndef AIGAMESTARTHANDLER_H_
+#define AIGAMESTARTHANDLER_H_
 #include "../../../../HttpServer/include/router/RouterHandler.h"
 #include "../GomokuServer.h"
 
@@ -12,3 +13,4 @@ public:
 private:
     GomokuServer* server_;
 };
+#endif

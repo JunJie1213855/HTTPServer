@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RATELIMITCONFIG_H_
+#define RATELIMITCONFIG_H_
 
 #include <string>
 
@@ -21,3 +22,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif

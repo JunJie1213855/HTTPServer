@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COMPRESSCONFIG_H_
+#define COMPRESSCONFIG_H_
 
 #include <string>
 #include <vector>
@@ -29,3 +30,4 @@ namespace http
 
     } // namespace middleware
 } // namespace http
+#endif
