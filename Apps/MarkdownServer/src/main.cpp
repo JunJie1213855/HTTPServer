@@ -1,9 +1,8 @@
-#include <string>
 #include <iostream>
-#include <muduo/net/TcpServer.h>
-#include <muduo/base/Logging.h>
-#include <muduo/net/EventLoop.h>
+#include <string>
+#include <unistd.h>
 
+#include "../../../HttpServer/include/core/Logging.h"
 #include "MarkdownServer.h"
 
 int main(int argc, char* argv[])
@@ -13,7 +12,6 @@ int main(int argc, char* argv[])
     std::string serverName = "MarkdownServer";
     int port = 8080;
 
-    // 参数解析
     int opt;
     const char* str = "p:";
     while ((opt = getopt(argc, argv, str)) != -1)
@@ -21,16 +19,14 @@ int main(int argc, char* argv[])
         switch (opt)
         {
             case 'p':
-            {
                 port = atoi(optarg);
                 break;
-            }
             default:
                 break;
         }
     }
 
-    muduo::Logger::setLogLevel(muduo::Logger::WARN);
+    http::core::log::setLevel(http::core::log::Level::WARN);
     MarkdownServer server(port, serverName);
     server.setThreadNum(4);
     server.start();

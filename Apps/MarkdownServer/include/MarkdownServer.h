@@ -18,9 +18,7 @@
 class MarkdownServer
 {
 public:
-    MarkdownServer(int port,
-                   const std::string& name,
-                   muduo::net::TcpServer::Option option = muduo::net::TcpServer::kNoReusePort);
+    MarkdownServer(int port, const std::string& name);
 
     void setThreadNum(int numThreads)
     {

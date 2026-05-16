@@ -32,9 +32,7 @@ class GameBackendHandler;
 class GomokuServer
 {
 public:
-    GomokuServer(int port,
-                 const std::string& name,
-                 muduo::net::TcpServer::Option option = muduo::net::TcpServer::kNoReusePort);
+    GomokuServer(int port, const std::string& name);
 
     void setThreadNum(int numThreads);
     void start();

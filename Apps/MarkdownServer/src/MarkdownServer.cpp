@@ -7,8 +7,8 @@
 #include <fstream>
 #include <cstring>
 
-MarkdownServer::MarkdownServer(int port, const std::string& name, muduo::net::TcpServer::Option option)
-    : httpServer_(port, name, false, option)
+MarkdownServer::MarkdownServer(int port, const std::string& name)
+    : httpServer_(port, name)
 {
     // 设置笔记存储目录
     notesDir_ = "Apps/MarkdownServer/notes";

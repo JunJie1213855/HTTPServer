@@ -1,24 +1,33 @@
 #include "../../../include/middleware/ratelimit/RateLimitMiddleware.h"
-#include <muduo/base/Logging.h>
+
 #include <algorithm>
+
+#include "../../../include/core/Logging.h"
 
 namespace http
 {
     namespace middleware
     {
 
+        namespace
+        {
+            double secondsBetween(std::chrono::steady_clock::time_point later,
+                                  std::chrono::steady_clock::time_point earlier)
+            {
+                using namespace std::chrono;
+                return duration_cast<duration<double>>(later - earlier).count();
+            }
+        } // namespace
+
         RateLimitMiddleware::RateLimitMiddleware(const RateLimitConfig &config)
-            : config_(config), lastCleanup_(muduo::Timestamp::now())
+            : config_(config), lastCleanup_(Clock::now())
         {
         }
 
         void RateLimitMiddleware::before(HttpRequest &request)
         {
             std::string ip = request.getClientIp();
-            if (ip.empty())
-            {
-                ip = "unknown";
-            }
+            if (ip.empty()) ip = "unknown";
 
             int count = getRequestCount(ip);
             if (count >= config_.maxRequests)
@@ -42,32 +51,26 @@ namespace http
 
         void RateLimitMiddleware::after(HttpResponse &response)
         {
-            // 添加限流信息头
             response.addHeader("X-RateLimit-Limit", std::to_string(config_.maxRequests));
             response.addHeader("X-RateLimit-Window", std::to_string(config_.windowSeconds) + "s");
         }
 
         void RateLimitMiddleware::cleanup()
         {
-            muduo::Timestamp now = muduo::Timestamp::now();
-            double elapsed = timeDifference(now, lastCleanup_);
+            const auto now = Clock::now();
+            const double elapsed = secondsBetween(now, lastCleanup_);
 
-            if (elapsed < config_.cleanupInterval)
-            {
-                return;
-            }
+            if (elapsed < config_.cleanupInterval) return;
 
-            double windowSec = static_cast<double>(config_.windowSeconds);
+            const double windowSec = static_cast<double>(config_.windowSeconds);
             for (auto it = requestRecords_.begin(); it != requestRecords_.end();)
             {
-                // 移除过期的时间戳
                 auto &timestamps = it->second;
-                while (!timestamps.empty() && timeDifference(now, timestamps.front()) > windowSec)
+                while (!timestamps.empty() && secondsBetween(now, timestamps.front()) > windowSec)
                 {
                     timestamps.pop_front();
                 }
 
-                // 如果该 IP 没有记录了，删除整个条目
                 if (timestamps.empty())
                 {
                     it = requestRecords_.erase(it);
@@ -84,23 +87,17 @@ namespace http
         int RateLimitMiddleware::getRequestCount(const std::string &ip)
         {
             std::lock_guard<std::mutex> lock(mutex_);
-
             cleanup();
 
             auto it = requestRecords_.find(ip);
-            if (it == requestRecords_.end())
-            {
-                return 0;
-            }
-
+            if (it == requestRecords_.end()) return 0;
             return static_cast<int>(it->second.size());
         }
 
         void RateLimitMiddleware::recordRequest(const std::string &ip)
         {
             std::lock_guard<std::mutex> lock(mutex_);
-
-            requestRecords_[ip].push_back(muduo::Timestamp::now());
+            requestRecords_[ip].push_back(Clock::now());
         }
 
     } // namespace middleware

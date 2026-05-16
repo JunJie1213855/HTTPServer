@@ -1,7 +1,7 @@
 #include "../../../include/middleware/compress/CompressMiddleware.h"
 
 #include <zlib.h>
-#include <muduo/base/Logging.h>
+#include "../../../include/core/Logging.h"
 #include <algorithm>
 
 namespace http

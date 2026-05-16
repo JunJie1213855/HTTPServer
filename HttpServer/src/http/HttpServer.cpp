@@ -1,243 +1,388 @@
 #include "../../include/http/HttpServer.h"
 
-#include <any>
-#include <functional>
-#include <memory>
+#include <chrono>
+#include <cstring>
+#include <exception>
+#include <type_traits>
+
+#include "../../include/core/IOBuffer.h"
+#include "../../include/core/Logging.h"
+#include "../../include/core/Ssl.h"
+#include "../../include/http/HttpContext.h"
+#include "../../include/ssl/SslConfig.h"
+#include "../../include/ssl/SslContext.h"
 
 namespace http
 {
 
-// 默认http回应函数
-void defaultHttpCallback(const HttpRequest &, HttpResponse *resp)
-{
-    resp->setStatusCode(HttpResponse::k404NotFound);
-    resp->setStatusMessage("Not Found");
-    resp->setCloseConnection(true);
-}
-
-HttpServer::HttpServer(int port,
-                       const std::string &name,
-                       bool useSSL,
-                       muduo::net::TcpServer::Option option)
-    : listenAddr_(port)
-    , server_(&mainLoop_, listenAddr_, name, option)
-    , useSSL_(useSSL)
-    , httpCallback_(std::bind(&HttpServer::handleRequest, this, std::placeholders::_1, std::placeholders::_2))
-{
-    initialize();
-}
-
-// 服务器运行函数
-void HttpServer::start()
-{
-    LOG_WARN << "HttpServer[" << server_.name() << "] starts listening on " << server_.ipPort();
-    // 开始运行
-    server_.start();
-    // 事件循环
-    mainLoop_.loop();
-}
-
-void HttpServer::initialize()
-{
-    // 设置回调函数
-    // 接收连接的回调函数
-    // 注意, 这个回调函数在内部是给connection的
-    // Server 仅仅只有连接
-    server_.setConnectionCallback(
-        std::bind(&HttpServer::onConnection, this, std::placeholders::_1));
-    // 接收消息的回调, 主Http服务器只需要接收连接即可
-    server_.setMessageCallback(
-        std::bind(&HttpServer::onMessage, this,
-                  std::placeholders::_1,
-                  std::placeholders::_2,
-                  std::placeholders::_3));
-}
-
-void HttpServer::setSslConfig(const ssl::SslConfig& config)
-{
-    if (useSSL_)
+    namespace
     {
-        sslCtx_ = std::make_unique<ssl::SslContext>(config);
-        if (!sslCtx_->initialize())
+
+        constexpr size_t kReadChunk = 16 * 1024;
+
+        void defaultHttpCallback(const HttpRequest &, HttpResponse *resp)
         {
-            LOG_ERROR << "Failed to initialize SSL context";
-            abort();
-        }
-    }
-}
-
-// 处理接收，并且处理SSL接收
-void HttpServer::onConnection(const muduo::net::TcpConnectionPtr& conn)
-{
-    if (conn->connected())
-    {
-        if (useSSL_)
-        {
-            auto sslConn = std::make_unique<ssl::SslConnection>(conn, sslCtx_.get());
-            // ssl 会替换 MessageCallback, 将初始化的 MessageCallback 覆盖.
-            sslConn->setMessageCallback(
-                std::bind(&HttpServer::onMessage, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-            sslConns_[conn] = std::move(sslConn);
-            sslConns_[conn]->startHandshake();  // SSL 握手
-        }
-        // 设置连接上下文， 解析请求
-        conn->setContext(HttpContext());
-    }
-    else 
-    {
-        if (useSSL_)
-        {
-            sslConns_.erase(conn);
-        }
-    }
-}
-
-// 连接成功后，开始处理信息接收
-void HttpServer::onMessage(const muduo::net::TcpConnectionPtr &conn,
-                           muduo::net::Buffer *buf,
-                           muduo::Timestamp receiveTime)
-{
-    try
-    {
-        // 这层判断只是代表是否支持ssl,支持ssl的话,需要对内容进行解密
-        if (useSSL_)
-        {
-            LOG_INFO << "onMessage useSSL_ is true";
-            // 1.查找对应的SSL连接
-            auto it = sslConns_.find(conn);
-            if (it != sslConns_.end())
-            {
-                LOG_INFO << "onMessage sslConns_ is not empty";
-                // 2. SSL连接处理数据
-                it->second->onRead(conn, buf, receiveTime);
-
-                // 3. 如果 SSL 握手还未完成，直接返回
-                if (!it->second->isHandshakeCompleted())
-                {
-                    LOG_INFO << "onMessage sslConns_ is not empty";
-                    return;
-                }
-
-                // 4. 从SSL连接的解密缓冲区获取数据
-                muduo::net::Buffer* decryptedBuf = it->second->getDecryptedBuffer();
-                if (decryptedBuf->readableBytes() == 0)
-                    return; // 没有解密后的数据
-
-                // 5. 使用解密后的数据进行HTTP 处理
-                buf = decryptedBuf; // 将 buf 指向解密后的数据
-                LOG_INFO << "onMessage decryptedBuf is not empty";
-            }
-        }
-
-
-        // HttpContext对象用于解析出buf中的请求报文，并把报文的关键信息封装到HttpRequest对象中
-        HttpContext *context = boost::any_cast<HttpContext>(conn->getMutableContext());
-        if (!context->parseRequest(buf, receiveTime)) // 解析一个http请求
-        {
-            // 如果解析http报文过程中出错
-            conn->send("HTTP/1.1 400 Bad Request\r\n\r\n");
-            conn->shutdown();
-        }
-        // 如果buf缓冲区中解析出一个完整的数据包才封装响应报文
-        if (context->gotAll())
-        {
-            // 开始处理请求
-            onRequest(conn, context->request());
-            context->reset();
-        }
-    }
-    catch (const std::exception &e)
-    {
-        // 捕获异常，返回错误信息
-        LOG_ERROR << "Exception in onMessage: " << e.what();
-        conn->send("HTTP/1.1 400 Bad Request\r\n\r\n");
-        conn->shutdown();
-    }
-}
-
-void HttpServer::onRequest(const muduo::net::TcpConnectionPtr &conn, const HttpRequest &req)
-{
-    // 查看连接是否需要关闭
-    const std::string &connection = req.getHeader("Connection");
-    bool close = ((connection == "close") ||
-                  (req.getVersion() == "HTTP/1.0" && connection != "Keep-Alive"));
-    // 设置响应
-    HttpResponse response(close);
-
-    // 设置客户端 IP，优先使用代理转发的头
-    HttpRequest mutableReq = req;
-    std::string forwardedFor = req.getHeader("X-Forwarded-For");
-    if (!forwardedFor.empty())
-    {
-        // X-Forwarded-For 可能包含多个 IP，取第一个
-        auto pos = forwardedFor.find(',');
-        mutableReq.setClientIp(pos != std::string::npos ? forwardedFor.substr(0, pos) : forwardedFor);
-    }
-    else
-    {
-        std::string realIp = req.getHeader("X-Real-IP");
-        if (!realIp.empty())
-        {
-            mutableReq.setClientIp(realIp);
-        }
-        else
-        {
-            mutableReq.setClientIp(conn->peerAddress().toIp());
-        }
-    }
-
-    // 根据请求报文信息来封装响应报文对象
-    httpCallback_(mutableReq, &response); // 执行onHttpCallback函数
-
-    // 可以给response设置一个成员，判断是否请求的是文件，如果是文件设置为true，并且存在文件位置在这里send出去。
-    muduo::net::Buffer buf;
-    response.appendToBuffer(&buf);
-    // 打印完整的响应内容用于调试
-    LOG_INFO << "Sending response:\n" << buf.toStringPiece().as_string();
-
-    // 发送响应
-    conn->send(&buf);
-    // 如果是短连接的话，返回响应报文后就断开连接
-    if (response.closeConnection())
-    {
-        conn->shutdown();
-    }
-}
-
-// 执行请求对应的路由处理函数
-void HttpServer::handleRequest(const HttpRequest &req, HttpResponse *resp)
-{
-    try
-    {
-        // 处理请求前的中间件
-        HttpRequest mutableReq = req;
-        // 这里可以处理 CORS 的预检请求
-        middlewareChain_.processBefore(mutableReq);
-
-        // 路由处理
-        if (!router_.route(mutableReq, resp))
-        {
-            LOG_INFO << "请求的啥，url：" << req.method() << " " << req.path();
-            LOG_INFO << "未找到路由，返回404";
             resp->setStatusCode(HttpResponse::k404NotFound);
             resp->setStatusMessage("Not Found");
             resp->setCloseConnection(true);
         }
 
-        // 处理响应后的中间件
-        middlewareChain_.processAfter(*resp);
-    }
-    catch (const HttpResponse& res) 
+        unsigned hardwareThreadDefault()
+        {
+            unsigned n = std::thread::hardware_concurrency();
+            return n == 0 ? 4 : n;
+        }
+
+        // Compile-time fork on stream type. Plain sockets close at the TCP
+        // layer; SSL streams attempt async_shutdown to send close_notify
+        // first, then fall through to the TCP close.
+        template <typename Stream>
+        core::awaitable<void> shutdownStream(Stream &stream)
+        {
+            namespace asio_ns = core::asio_ns;
+            if constexpr (std::is_same_v<Stream, core::ssl_stream>)
+            {
+                try
+                {
+                    co_await stream.async_shutdown(core::use_awaitable);
+                }
+                catch (const std::system_error &)
+                {
+                    // close_notify may have already been received; ignore.
+                }
+                asio_ns::error_code ec;
+                stream.lowest_layer().shutdown(core::tcp::socket::shutdown_both, ec);
+            }
+            else
+            {
+                asio_ns::error_code ec;
+                stream.shutdown(core::tcp::socket::shutdown_both, ec);
+            }
+            co_return;
+        }
+
+        // Resolve the underlying tcp::socket regardless of whether `stream`
+        // is a plain socket or an SSL stream.
+        template <typename Stream>
+        core::tcp::socket &asTcpSocket(Stream &stream)
+        {
+            if constexpr (std::is_same_v<Stream, core::ssl_stream>)
+            {
+                return stream.next_layer();
+            }
+            else
+            {
+                return stream;
+            }
+        }
+
+    } // namespace
+
+    HttpServer::HttpServer(int port, const std::string &name, bool useSSL)
+        : port_(port)
+        , name_(name)
+        , useSSL_(useSSL)
+        , acceptor_(acceptorCtx_)
+        , blockingPool_(hardwareThreadDefault())
     {
-        // 处理中间件抛出的响应（如CORS预检请求）
-        *resp = res;
+        httpCallback_ = defaultHttpCallback;
     }
-    catch (const std::exception& e) 
+
+    HttpServer::~HttpServer() = default;
+
+    void HttpServer::setSslConfig(const ssl::SslConfig &config)
     {
-        // 错误处理
-        resp->setStatusCode(HttpResponse::k500InternalServerError);
-        resp->setBody(e.what());
+        sslCtx_ = std::make_unique<ssl::SslContext>(config);
+        if (!sslCtx_->initialize())
+        {
+            LOG_FATAL << "SSL context initialization failed";
+        }
     }
-}
+
+    void HttpServer::start()
+    {
+        namespace asio_ns = core::asio_ns;
+
+        if (useSSL_ && !sslCtx_)
+        {
+            LOG_FATAL << "useSSL=true but setSslConfig() was never called";
+            return;
+        }
+
+        core::tcp::endpoint endpoint(core::tcp::v4(), static_cast<unsigned short>(port_));
+        asio_ns::error_code ec;
+        acceptor_.open(endpoint.protocol(), ec);
+        if (ec) { LOG_FATAL << "acceptor.open failed: " << ec.message(); return; }
+        acceptor_.set_option(asio_ns::socket_base::reuse_address(true), ec);
+        acceptor_.bind(endpoint, ec);
+        if (ec) { LOG_FATAL << "acceptor.bind(port=" << port_ << ") failed: " << ec.message(); return; }
+        acceptor_.listen(asio_ns::socket_base::max_listen_connections, ec);
+        if (ec) { LOG_FATAL << "acceptor.listen failed: " << ec.message(); return; }
+
+        LOG_WARN << "HttpServer[" << name_ << "] listening on port " << port_
+                 << " (workers=" << workerNum_
+                 << ", ssl=" << (useSSL_ ? "on" : "off")
+                 << ", model=one-loop-per-thread)";
+
+        workerCtxs_.reserve(workerNum_);
+        workerGuards_.reserve(workerNum_);
+        workerThreads_.reserve(workerNum_);
+
+        for (int i = 0; i < workerNum_; ++i)
+        {
+            auto ctx = std::make_unique<asio_ns::io_context>(/*concurrency_hint=*/1);
+            workerGuards_.emplace_back(asio_ns::make_work_guard(ctx->get_executor()));
+            workerCtxs_.emplace_back(std::move(ctx));
+        }
+        for (int i = 0; i < workerNum_; ++i)
+        {
+            auto *raw = workerCtxs_[i].get();
+            workerThreads_.emplace_back([raw, i] {
+                try { raw->run(); }
+                catch (const std::exception &e)
+                {
+                    LOG_ERROR << "worker io_context[" << i << "] threw: " << e.what();
+                }
+            });
+        }
+
+        running_.store(true);
+        core::spawnLogged(acceptorCtx_, acceptLoop(), "acceptLoop");
+
+        try { acceptorCtx_.run(); }
+        catch (const std::exception &e)
+        {
+            LOG_ERROR << "acceptor io_context threw: " << e.what();
+        }
+
+        for (auto &g : workerGuards_) g.reset();
+        for (auto &t : workerThreads_) if (t.joinable()) t.join();
+        workerThreads_.clear();
+        workerGuards_.clear();
+        workerCtxs_.clear();
+    }
+
+    void HttpServer::stop()
+    {
+        if (!running_.exchange(false)) return;
+        core::asio_ns::error_code ec;
+        acceptor_.close(ec);
+        acceptorCtx_.stop();
+        for (auto &g : workerGuards_) g.reset();
+        for (auto &ctx : workerCtxs_) ctx->stop();
+    }
+
+    core::asio_ns::io_context &HttpServer::pickWorker()
+    {
+        const size_t n = workerCtxs_.size();
+        const size_t idx = nextWorker_.fetch_add(1, std::memory_order_relaxed) % n;
+        return *workerCtxs_[idx];
+    }
+
+    core::awaitable<void> HttpServer::acceptLoop()
+    {
+        using core::use_awaitable;
+
+        while (running_.load())
+        {
+            try
+            {
+                auto &workerCtx = pickWorker();
+                core::tcp::socket sock(workerCtx);
+                co_await acceptor_.async_accept(sock, use_awaitable);
+                sock.set_option(core::tcp::no_delay(true));
+
+                if (useSSL_)
+                {
+                    core::spawnLogged(workerCtx.get_executor(),
+                                      handleSslConnection(std::move(sock)),
+                                      "handleSslConnection");
+                }
+                else
+                {
+                    core::spawnLogged(workerCtx.get_executor(),
+                                      handleTcpConnection(std::move(sock)),
+                                      "handleTcpConnection");
+                }
+            }
+            catch (const std::exception &e)
+            {
+                if (running_.load())
+                {
+                    LOG_ERROR << "accept loop error: " << e.what();
+                }
+                else
+                {
+                    co_return;
+                }
+            }
+        }
+    }
+
+    // Stream-agnostic per-connection read/parse/respond loop. Reused for
+    // both plain `tcp::socket` and `asio::ssl::stream<tcp::socket>`.
+    template <typename Stream>
+    static core::awaitable<void> runConnectionLoop(HttpServer &server,
+                                                   Stream &stream,
+                                                   std::string peerIp,
+                                                   core::asio_ns::any_io_executor workerExec)
+    {
+        using core::use_awaitable;
+        namespace asio_ns = core::asio_ns;
+
+        core::IOBuffer buf;
+        HttpContext context;
+
+        while (true)
+        {
+            buf.ensureWritableBytes(kReadChunk);
+            std::size_t n = 0;
+            try
+            {
+                n = co_await stream.async_read_some(
+                    asio_ns::buffer(buf.beginWrite(), buf.writableBytes()),
+                    use_awaitable);
+            }
+            catch (const std::system_error &e)
+            {
+                const auto code = e.code();
+                if (code != asio_ns::error::eof &&
+                    code != asio_ns::error::connection_reset &&
+                    code != asio_ns::error::operation_aborted)
+                {
+                    LOG_WARN << "read error from " << peerIp << ": " << code.message();
+                }
+                break;
+            }
+            if (n == 0) break;
+            buf.hasWritten(n);
+
+            while (true)
+            {
+                if (!context.parseRequest(&buf, std::chrono::system_clock::now()))
+                {
+                    const char *bad = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    try
+                    {
+                        co_await asio_ns::async_write(stream, asio_ns::buffer(bad, std::strlen(bad)), use_awaitable);
+                    }
+                    catch (...) {}
+                    co_await shutdownStream(stream);
+                    co_return;
+                }
+                if (!context.gotAll()) break;
+
+                HttpRequest req = context.request();
+                context.reset();
+
+                std::string forwardedFor = req.getHeader("X-Forwarded-For");
+                if (!forwardedFor.empty())
+                {
+                    auto pos = forwardedFor.find(',');
+                    req.setClientIp(pos != std::string::npos ? forwardedFor.substr(0, pos) : forwardedFor);
+                }
+                else
+                {
+                    std::string realIp = req.getHeader("X-Real-IP");
+                    req.setClientIp(!realIp.empty() ? realIp : peerIp);
+                }
+
+                const std::string &conn = req.getHeader("Connection");
+                const bool close = (conn == "close") ||
+                                   (req.getVersion() == "HTTP/1.0" && conn != "Keep-Alive");
+                HttpResponse response(close);
+
+#ifdef HTTPSERVER_INLINE_PIPELINE
+                // Bench variant: run handlers inline on the worker IO thread.
+                // Safe only when no handler may block - good as an upper-bound
+                // ceiling for "framework overhead per request".
+                (void)workerExec;
+                server.runRequestPipeline(req, response);
+#else
+                co_await asio_ns::post(server.blockingPool(), use_awaitable);
+                server.runRequestPipeline(req, response);
+                co_await asio_ns::post(workerExec, use_awaitable);
+#endif
+
+                core::IOBuffer outBuf;
+                response.appendToBuffer(outBuf);
+
+                bool writeFailed = false;
+                try
+                {
+                    co_await asio_ns::async_write(
+                        stream,
+                        asio_ns::buffer(outBuf.peek(), outBuf.readableBytes()),
+                        use_awaitable);
+                }
+                catch (const std::system_error &e)
+                {
+                    LOG_WARN << "write error: " << e.code().message();
+                    writeFailed = true;
+                }
+
+                if (writeFailed || response.closeConnection())
+                {
+                    co_await shutdownStream(stream);
+                    co_return;
+                }
+            }
+        }
+    }
+
+    void HttpServer::runRequestPipeline(HttpRequest &req, HttpResponse &resp)
+    {
+        try
+        {
+            middlewareChain_.processBefore(req);
+            if (!router_.route(req, &resp)) httpCallback_(req, &resp);
+            middlewareChain_.processAfter(resp);
+        }
+        catch (const HttpResponse &thrown) { resp = thrown; }
+        catch (const std::exception &e)
+        {
+            LOG_ERROR << "Pipeline exception: " << e.what();
+            resp.setStatusCode(HttpResponse::k500InternalServerError);
+            resp.setStatusMessage("Internal Server Error");
+            resp.setBody(e.what());
+        }
+    }
+
+    core::awaitable<void> HttpServer::handleTcpConnection(core::tcp::socket socket)
+    {
+        namespace asio_ns = core::asio_ns;
+        auto workerExec = co_await asio_ns::this_coro::executor;
+
+        std::string peerIp;
+        try { peerIp = socket.remote_endpoint().address().to_string(); }
+        catch (...) {}
+
+        co_await runConnectionLoop(*this, socket, std::move(peerIp), workerExec);
+    }
+
+    core::awaitable<void> HttpServer::handleSslConnection(core::tcp::socket socket)
+    {
+        namespace asio_ns = core::asio_ns;
+        auto workerExec = co_await asio_ns::this_coro::executor;
+
+        std::string peerIp;
+        try { peerIp = socket.remote_endpoint().address().to_string(); }
+        catch (...) {}
+
+        core::ssl_stream stream(std::move(socket), sslCtx_->native());
+
+        try
+        {
+            co_await stream.async_handshake(core::asio_ssl::stream_base::server,
+                                            core::use_awaitable);
+        }
+        catch (const std::system_error &e)
+        {
+            LOG_WARN << "SSL handshake failed from " << peerIp << ": " << e.code().message();
+            co_return;
+        }
+
+        co_await runConnectionLoop(*this, stream, std::move(peerIp), workerExec);
+    }
 
 } // namespace http

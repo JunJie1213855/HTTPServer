@@ -1,9 +1,12 @@
 #include "../../include/http/HttpRequest.h"
 
+#include <cassert>
+#include <cctype>
+
 namespace http
 {
 
-    void HttpRequest::setReceiveTime(muduo::Timestamp t)
+    void HttpRequest::setReceiveTime(TimePoint t)
     {
         receiveTime_ = t;
     }

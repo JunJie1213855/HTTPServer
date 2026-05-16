@@ -1,57 +1,53 @@
-#ifndef SSLCONFIG_H_
-#define SSLCONFIG_H_
-#include "SslTypes.h"
+#ifndef SSL_CONFIG_H_
+#define SSL_CONFIG_H_
+
 #include <string>
-#include <vector>
 
-namespace ssl 
+#include "SslTypes.h"
+
+namespace ssl
 {
 
-class SslConfig 
-{
-public:
-    SslConfig();
-    ~SslConfig() = default;
+    // Plain data holder. Identical surface to the original muduo-era SslConfig
+    // so application code that constructed one keeps compiling unchanged.
+    class SslConfig
+    {
+    public:
+        SslConfig() = default;
+        ~SslConfig() = default;
 
-    // 证书配置
-    void setCertificateFile(const std::string& certFile) { certFile_ = certFile; }
-    void setPrivateKeyFile(const std::string& keyFile) { keyFile_ = keyFile; }
-    void setCertificateChainFile(const std::string& chainFile) { chainFile_ = chainFile; }
-    
-    // 协议版本和加密套件配置
-    void setProtocolVersion(SSLVersion version) { version_ = version; }
-    void setCipherList(const std::string& cipherList) { cipherList_ = cipherList; }
-    
-    // 客户端验证配置
-    void setVerifyClient(bool verify) { verifyClient_ = verify; }
-    void setVerifyDepth(int depth) { verifyDepth_ = depth; }
-    
-    // 会话配置
-    void setSessionTimeout(int seconds) { sessionTimeout_ = seconds; }
-    void setSessionCacheSize(long size) { sessionCacheSize_ = size; }
+        void setCertificateFile(const std::string &f) { certFile_ = f; }
+        void setPrivateKeyFile(const std::string &f) { keyFile_ = f; }
+        void setCertificateChainFile(const std::string &f) { chainFile_ = f; }
+        void setProtocolVersion(SSLVersion v) { version_ = v; }
+        void setCipherList(const std::string &c) { cipherList_ = c; }
+        void setVerifyClient(bool v) { verifyClient_ = v; }
+        void setVerifyDepth(int d) { verifyDepth_ = d; }
+        void setSessionTimeout(int s) { sessionTimeout_ = s; }
+        void setSessionCacheSize(long s) { sessionCacheSize_ = s; }
 
-    // Getters
-    const std::string& getCertificateFile() const { return certFile_; }
-    const std::string& getPrivateKeyFile() const { return keyFile_; }
-    const std::string& getCertificateChainFile() const { return chainFile_; }
-    SSLVersion getProtocolVersion() const { return version_; }
-    const std::string& getCipherList() const { return cipherList_; }
-    bool getVerifyClient() const { return verifyClient_; }
-    int getVerifyDepth() const { return verifyDepth_; }
-    int getSessionTimeout() const { return sessionTimeout_; }
-    long getSessionCacheSize() const { return sessionCacheSize_; }
+        const std::string &getCertificateFile() const { return certFile_; }
+        const std::string &getPrivateKeyFile() const { return keyFile_; }
+        const std::string &getCertificateChainFile() const { return chainFile_; }
+        SSLVersion getProtocolVersion() const { return version_; }
+        const std::string &getCipherList() const { return cipherList_; }
+        bool getVerifyClient() const { return verifyClient_; }
+        int getVerifyDepth() const { return verifyDepth_; }
+        int getSessionTimeout() const { return sessionTimeout_; }
+        long getSessionCacheSize() const { return sessionCacheSize_; }
 
-private:
-    std::string certFile_; // 证书文件
-    std::string keyFile_; // 私钥文件
-    std::string chainFile_; // 证书链文件
-    SSLVersion  version_; // 协议版本
-    std::string cipherList_; // 加密套件
-    bool        verifyClient_; // 是否验证客户端
-    int         verifyDepth_; // 验证深度
-    int         sessionTimeout_; // 会话超时时间
-    long        sessionCacheSize_; // 会话缓存大小
-};
+    private:
+        std::string certFile_;
+        std::string keyFile_;
+        std::string chainFile_;
+        SSLVersion version_{SSLVersion::TLS_1_2};
+        std::string cipherList_;
+        bool verifyClient_{false};
+        int verifyDepth_{4};
+        int sessionTimeout_{3600};
+        long sessionCacheSize_{20480};
+    };
 
 } // namespace ssl
+
 #endif

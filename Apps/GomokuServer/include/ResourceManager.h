@@ -5,7 +5,8 @@
 #include <unordered_map>
 #include <mutex>
 
-#include <muduo/base/Logging.h>
+#include <fstream>
+#include "../../../HttpServer/include/core/Logging.h"
 #include "../../../HttpServer/include/utils/JsonUtil.h"
 
 class ResourceManager

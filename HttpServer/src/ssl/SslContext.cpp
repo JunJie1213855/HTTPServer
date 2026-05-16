@@ -1,150 +1,132 @@
 #include "../../include/ssl/SslContext.h"
-#include <muduo/base/Logging.h>
+
+#include "../../include/core/Logging.h"
+
 #include <openssl/err.h>
+#include <openssl/ssl.h>
 
 namespace ssl
 {
-SslContext::SslContext(const SslConfig& config)
-    : ctx_(nullptr)
-    , config_(config)
-{
 
-}
+    namespace acore = http::core;
 
-SslContext::~SslContext()
-{
-    if (ctx_)
+    SslContext::SslContext(const SslConfig &config)
+        : config_(config)
+        , ctx_(versionToMethod(config.getProtocolVersion()))
     {
-        SSL_CTX_free(ctx_);
-    }
-}
-
-bool SslContext::initialize()
-{
-    // 初始化 OpenSSL
-    OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | 
-                    OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
-
-    // 创建 SSL 上下文
-    const SSL_METHOD* method = TLS_server_method();
-    ctx_ = SSL_CTX_new(method);
-    if (!ctx_)
-    {
-        handleSslError("Failed to create SSL context");
-        return false;
     }
 
-    // 设置 SSL 选项
-    long options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | 
-                  SSL_OP_NO_COMPRESSION |
-                  SSL_OP_CIPHER_SERVER_PREFERENCE;
-    SSL_CTX_set_options(ctx_, options);
-
-    // 加载证书和私钥
-    if (!loadCertificates())
+    acore::asio_ssl::context::method SslContext::versionToMethod(SSLVersion v)
     {
-        return false;
-    }
-
-    // 设置协议版本
-    if (!setupProtocol())
-    {
-        return false;
-    }
-
-    // 设置会话缓存
-    setupSessionCache();
-
-    LOG_INFO << "SSL context initialized successfully";
-    return true;
-}
-
-bool SslContext::loadCertificates()
-{
-    // 加载证书
-    if (SSL_CTX_use_certificate_file(ctx_,
-     config_.getCertificateFile().c_str(), SSL_FILETYPE_PEM) <= 0)
-    {
-        handleSslError("Failed to load server certificate");
-        return false;
-    }
-
-    // 加载私钥
-    if (SSL_CTX_use_PrivateKey_file(ctx_, 
-        config_.getPrivateKeyFile().c_str(), SSL_FILETYPE_PEM) <= 0)
-    {
-        handleSslError("Failed to load private key");
-        return false;
-    }
-
-    // 验证私钥
-    if (!SSL_CTX_check_private_key(ctx_))
-    {
-        handleSslError("Private key does not match the certificate");
-        return false;
-    }
-
-    // 加载证书链
-    if (!config_.getCertificateChainFile().empty())
-    {
-        if (SSL_CTX_use_certificate_chain_file(ctx_,
-            config_.getCertificateChainFile().c_str()) <= 0)
+        using m = acore::asio_ssl::context::method;
+        switch (v)
         {
-            handleSslError("Failed to load certificate chain");
+        case SSLVersion::TLS_1_0: return m::tlsv1_server;
+        case SSLVersion::TLS_1_1: return m::tlsv11_server;
+        case SSLVersion::TLS_1_2: return m::tlsv12_server;
+        case SSLVersion::TLS_1_3: return m::tlsv13_server;
+        }
+        return m::tlsv12_server;
+    }
+
+    bool SslContext::initialize()
+    {
+        using namespace acore;
+        asio_ns::error_code ec;
+
+        // Sensible server-side defaults: no SSLv2/v3, no renegotiation,
+        // server picks cipher order.
+        ctx_.set_options(
+                asio_ssl::context::default_workarounds |
+                asio_ssl::context::no_sslv2 |
+                asio_ssl::context::no_sslv3 |
+                asio_ssl::context::no_compression |
+                asio_ssl::context::single_dh_use,
+            ec);
+        if (ec)
+        {
+            LOG_ERROR << "SslContext::set_options: " << ec.message();
             return false;
         }
-    }
 
-    return true;
-}
+        // Cipher server preference.
+        SSL_CTX_set_options(ctx_.native_handle(), SSL_OP_CIPHER_SERVER_PREFERENCE);
 
-bool SslContext::setupProtocol()
-{
-    // 设置 SSL/TLS 协议版本
-    long options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
-    switch (config_.getProtocolVersion())
-    {
-        case SSLVersion::TLS_1_0:
-            options |= SSL_OP_NO_TLSv1;
-            break;
-        case SSLVersion::TLS_1_1:
-            options |= SSL_OP_NO_TLSv1_1;
-            break;
-        case SSLVersion::TLS_1_2:
-            options |= SSL_OP_NO_TLSv1_2;
-            break;
-        case SSLVersion::TLS_1_3:
-            options |= SSL_OP_NO_TLSv1_3;
-            break;
-    }
-    SSL_CTX_set_options(ctx_, options);
-    
-    // 设置加密套件
-    if (!config_.getCipherList().empty())
-    {
-        if (SSL_CTX_set_cipher_list(ctx_,
-            config_.getCipherList().c_str()) <= 0)
+        if (!config_.getCertificateFile().empty())
         {
-            handleSslError("Failed to set cipher list");
+            ctx_.use_certificate_file(config_.getCertificateFile(),
+                                      asio_ssl::context::pem, ec);
+            if (ec)
+            {
+                LOG_ERROR << "use_certificate_file(" << config_.getCertificateFile()
+                          << "): " << ec.message();
+                return false;
+            }
+        }
+        else
+        {
+            LOG_ERROR << "SslContext: certificate file not configured";
             return false;
         }
+
+        if (!config_.getPrivateKeyFile().empty())
+        {
+            ctx_.use_private_key_file(config_.getPrivateKeyFile(),
+                                      asio_ssl::context::pem, ec);
+            if (ec)
+            {
+                LOG_ERROR << "use_private_key_file(" << config_.getPrivateKeyFile()
+                          << "): " << ec.message();
+                return false;
+            }
+        }
+        else
+        {
+            LOG_ERROR << "SslContext: private key file not configured";
+            return false;
+        }
+
+        if (!config_.getCertificateChainFile().empty())
+        {
+            ctx_.use_certificate_chain_file(config_.getCertificateChainFile(), ec);
+            if (ec)
+            {
+                LOG_ERROR << "use_certificate_chain_file: " << ec.message();
+                return false;
+            }
+        }
+
+        if (!config_.getCipherList().empty())
+        {
+            if (SSL_CTX_set_cipher_list(ctx_.native_handle(),
+                                        config_.getCipherList().c_str()) <= 0)
+            {
+                char buf[256];
+                ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
+                LOG_ERROR << "set_cipher_list failed: " << buf;
+                return false;
+            }
+        }
+
+        if (config_.getVerifyClient())
+        {
+            ctx_.set_verify_mode(
+                asio_ssl::verify_peer | asio_ssl::verify_fail_if_no_peer_cert,
+                ec);
+            if (ec) { LOG_ERROR << "set_verify_mode: " << ec.message(); return false; }
+            SSL_CTX_set_verify_depth(ctx_.native_handle(), config_.getVerifyDepth());
+        }
+        else
+        {
+            ctx_.set_verify_mode(asio_ssl::verify_none, ec);
+        }
+
+        SSL_CTX_set_session_cache_mode(ctx_.native_handle(), SSL_SESS_CACHE_SERVER);
+        SSL_CTX_sess_set_cache_size(ctx_.native_handle(), config_.getSessionCacheSize());
+        SSL_CTX_set_timeout(ctx_.native_handle(), config_.getSessionTimeout());
+
+        LOG_INFO << "SslContext initialized (cert=" << config_.getCertificateFile() << ")";
+        return true;
     }
 
-    return true;
-}
-
-void SslContext::setupSessionCache()
-{
-    SSL_CTX_set_session_cache_mode(ctx_, SSL_SESS_CACHE_SERVER);
-    SSL_CTX_sess_set_cache_size(ctx_, config_.getSessionCacheSize());
-    SSL_CTX_set_timeout(ctx_, config_.getSessionTimeout());
-}
-
-void SslContext::handleSslError(const char* msg)
-{
-    char buf[256];
-    ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
-    LOG_ERROR << msg << ": " << buf;
-}
-
-}; // namespace ssl
+} // namespace ssl

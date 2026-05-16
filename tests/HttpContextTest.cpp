@@ -1,15 +1,15 @@
 #include <gtest/gtest.h>
+#include <chrono>
 #include "http/HttpContext.h"
-#include <muduo/net/Buffer.h>
-#include <muduo/base/Timestamp.h>
+#include "core/IOBuffer.h"
 
 using namespace http;
 
 class HttpContextTest : public ::testing::Test {
 protected:
-    muduo::net::Buffer buffer;
+    core::IOBuffer buffer;
     HttpContext context;
-    muduo::Timestamp timestamp;
+    HttpRequest::TimePoint timestamp{std::chrono::system_clock::now()};
 
     // Helper to append string to buffer
     void appendToBuffer(const std::string& data) {

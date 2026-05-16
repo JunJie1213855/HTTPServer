@@ -17,10 +17,8 @@
 
 using namespace http;
 
-GomokuServer::GomokuServer(int port,
-                           const std::string &name,
-                           muduo::net::TcpServer::Option option)
-    : httpServer_(port, name, option), maxOnline_(0)
+GomokuServer::GomokuServer(int port, const std::string &name)
+    : httpServer_(port, name), maxOnline_(0)
 {
     initialize();
 }
