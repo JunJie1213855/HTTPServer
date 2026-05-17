@@ -1,6 +1,8 @@
 # HTTPServer
 
-基于 [Muduo](https://github.com/chenshuo/muduo) 网络库构建的 C++ HTTP 服务器框架，提供路由、中间件、会话管理、SSL、数据库连接池等能力，并附带两个完整应用示例。
+基于 **standalone Asio + io_uring + C++20 协程** 的 HTTP/HTTPS 服务器框架，提供路由、中间件、会话管理、SSL、MySQL 连接池等能力，并附带两个完整应用示例（Markdown 笔记、五子棋 AI 对战）。
+
+> 历史：本项目最初基于 [Muduo](https://github.com/chenshuo/muduo)，已重写为 standalone Asio + io_uring 后端，使用 C++20 协程（`co_await` / `awaitable`）替换原有 Reactor 回调。框架对外保留了与 muduo 时期一致的接口风格（如 `IOBuffer`、`LOG_*` 流式宏），原有应用代码可平滑迁移。
 
 ---
 
@@ -8,208 +10,259 @@
 
 ```
 HTTPServer/
-├── HttpServer/                        # 核心框架
+├── HttpServer/                         # 核心框架（静态库 http_server）
 │   ├── include/
-│   │   ├── http/                      # HTTP 协议（Request/Response/Context/Server）
-│   │   ├── router/                    # 路由系统
-│   │   ├── session/                   # 会话管理
-│   │   ├── middleware/                # 中间件
-│   │   │   ├── cors/                  # CORS 中间件
-│   │   │   ├── compress/              # Gzip 压缩中间件
-│   │   │   ├── ratelimit/             # 限流中间件
-│   │   │   └── logging/               # 访问日志中间件
-│   │   ├── ssl/                       # SSL/TLS 支持
-│   │   └── utils/                     # 工具类（FileUtil, JsonUtil, MysqlUtil, DB连接池）
+│   │   ├── core/                       # 网络/日志基础设施
+│   │   │   ├── Awaitable.h             # asio 协程别名（awaitable/use_awaitable/spawnLogged）
+│   │   │   ├── IOBuffer.h              # 兼容 muduo::Buffer 的可读写缓冲
+│   │   │   ├── Logging.h               # 流式日志宏 LOG_DEBUG/INFO/WARN/ERROR/FATAL
+│   │   │   └── Ssl.h                   # asio::ssl 别名
+│   │   ├── http/                       # HttpServer / HttpContext / HttpRequest / HttpResponse
+│   │   ├── router/                     # 路由（静态 + 正则动态）
+│   │   ├── session/                    # 会话（Cookie + 内存存储）
+│   │   ├── middleware/                 # 中间件
+│   │   │   ├── compress/               # Gzip 响应压缩
+│   │   │   ├── cors/                   # CORS
+│   │   │   ├── logging/                # 访问日志
+│   │   │   └── ratelimit/              # 滑动窗口限流
+│   │   ├── ssl/                        # SslConfig / SslContext / SslTypes
+│   │   └── utils/                      # FileUtil / JsonUtil / MysqlUtil / db 连接池
 │   └── src/
 ├── Apps/
-│   ├── MarkdownServer/                # Markdown 笔记应用
-│   └── GomokuServer/                  # 五子棋 AI 对战应用
+│   ├── MarkdownServer/                 # Markdown 笔记应用（无 DB 依赖）
+│   └── GomokuServer/                   # 五子棋 AI 对战应用（需 MySQL）
+├── tests/                              # GoogleTest 单元测试 + 压测服务
+│   ├── SessionTest.cpp
+│   ├── HttpRequestTest.cpp
+│   ├── HttpContextTest.cpp
+│   ├── bench_server.cpp                # 最小化基准服务（无中间件）
+│   └── ssl_smoke.cpp                   # SSL 冒烟测试
+├── third_party/nlohmann/               # vendored nlohmann/json 单头文件
 ├── CMakeLists.txt
-└── build/                             # 编译输出目录
+└── build/
 ```
 
 ---
 
-## 核心框架
+## 架构概览
 
-### HttpServer (`http::HttpServer`)
+### 并发模型：one-loop-per-thread
 
-事件驱动的 HTTP 服务器，封装 Muduo TcpServer：
+- **1 个 acceptor `io_context`**：仅运行 `acceptLoop` 协程
+- **N 个 worker `io_context`**（默认 = `setThreadNum(N)`）：每个独占一个线程，循环负载均衡分发新连接
+- **1 个 `asio::thread_pool blockingPool_`**：把可能阻塞的业务处理（DB、文件 I/O）从 worker 线程切走，避免拖慢事件循环
+
+每条连接是一个 C++20 协程（`awaitable<void>`），由 worker 的 io_context 调度。流程：
+
+```
+async_read_some → parseRequest → (post to blockingPool)
+                                    └─ middleware.before → router.route → middleware.after
+                                 ←──────── post back to worker ────────
+async_write → keep-alive ? loop : shutdown
+```
+
+> 通过定义 `HTTPSERVER_INLINE_PIPELINE` 可让 handler 直接在 worker 线程内联执行，作为"框架开销上限"的基准测试入口（仅当所有 handler 都不会阻塞时安全）。
+
+### io_uring 后端
+
+CMakeLists 中通过编译开关启用 Asio 的 io_uring 后端：
+
+```cmake
+ASIO_HAS_IO_URING=1
+ASIO_DISABLE_EPOLL=1
+ASIO_NO_DEPRECATED=1
+ASIO_STANDALONE=1
+```
+
+依赖 `liburing`（通过 pkg-config 检测）。
+
+### muduo 兼容层
+
+为了让上层代码不需要重写，`core/` 提供与 muduo 同名/同语义的设施：
+
+| muduo 原物 | 本项目替代 | 位置 |
+|------------|-----------|------|
+| `muduo::net::Buffer` | `http::core::IOBuffer`（同样布局：prepend / readable / writable） | `core/IOBuffer.h` |
+| `LOG_INFO << ...` 等 | 同名宏 | `core/Logging.h` |
+| `EventLoop` + `TcpServer` | `asio::io_context` + 协程 acceptor | `http/HttpServer.cpp` |
+
+---
+
+## 核心 API
+
+### HttpServer
 
 ```cpp
-http::HttpServer server(8080, "MyServer");
+#include "http/HttpServer.h"
+
+http::HttpServer server(8080, "MyServer");   // 第三参数 useSSL，默认 false
 server.setThreadNum(4);
 
-// 注册路由
+// 路由
 server.Get("/api/info", [](const http::HttpRequest& req, http::HttpResponse* resp) {
     resp->setStatusCode(http::HttpResponse::k200Ok);
     resp->setContentType("application/json");
-    resp->setBody(R"({"version": "1.0"})");
+    resp->setBody(R"({"version":"2.0"})");
 });
 
-// 添加中间件
+// 动态路由（路径参数）
+server.addRoute(http::HttpRequest::kGet, "/api/notes/:name", handler);
+// handler 内通过 req.getPathParameters("name") 获取
+
+// 中间件
 server.addMiddleware(std::make_shared<http::middleware::CorsMiddleware>());
 server.addMiddleware(std::make_shared<http::middleware::RateLimitMiddleware>());
 
-server.start();
+server.start();    // 阻塞，直到 stop()
 ```
 
-### 路由 (`http::router::Router`)
-
-支持**静态路由**和**动态路由**（正则参数）：
+### HttpRequest
 
 ```cpp
-// 静态路由
-server.Get("/api/notes", handler);
-
-// 动态路由（:name 为路径参数）
-server.addRoute(http::HttpRequest::kGet, "/api/notes/:name", handler);
-
-// 在 handler 中获取参数
-std::string name = req.getPathParameters("name");
+req.method()                      // kGet / kPost / kPut / kDelete ...
+req.path()
+req.getHeader("User-Agent")
+req.getBody()
+req.getClientIp()                 // 自动解析 X-Forwarded-For / X-Real-IP
+req.getPathParameters("name")     // 动态路由参数
+req.getQueryParameters("page")    // ?page=1
 ```
 
-### 请求与响应
+### HttpResponse
 
-**HttpRequest**:
-```cpp
-req.method()                    // kGet, kPost, kPut, kDelete ...
-req.path()                      // URL 路径
-req.getHeader("User-Agent")     // 请求头
-req.getBody()                   // 请求体
-req.getClientIp()               // 客户端 IP（支持 X-Forwarded-For / X-Real-IP）
-req.getPathParameters("name")   // 动态路由参数
-req.getQueryParameters("page")   // 查询参数 ?page=1
-```
-
-**HttpResponse**:
 ```cpp
 resp->setStatusCode(http::HttpResponse::k200Ok);
 resp->setContentType("application/json");
-resp->setBody(R"({"key": "value"})");
-resp->addHeader("X-Custom-Header", "value");
+resp->setBody(R"({"key":"value"})");
+resp->addHeader("X-Custom", "v");
 resp->setCloseConnection(false);  // Keep-Alive
 ```
 
-### 会话管理 (`http::session::SessionManager`)
-
-基于 Cookie 的会话，支持内存存储：
+### 会话
 
 ```cpp
-auto sessionManager = std::make_unique<http::session::SessionManager>(
-    std::make_unique<http::session::MemorySessionStorage>());
-server.setSessionManager(std::move(sessionManager));
+auto sm = std::make_unique<http::session::SessionManager>(
+            std::make_unique<http::session::MemorySessionStorage>());
+server.setSessionManager(std::move(sm));
 
-// 在 handler 中使用
-auto session = server.getSessionManager()->getSession(req, resp);
-session->setValue("userId", "123");
-session->setValue("isLoggedIn", "true");
-std::string userId = session->getValue("userId");
+// handler 内
+auto s = server.getSessionManager()->getSession(req, resp);
+s->setValue("userId", "123");
+s->setValue("isLoggedIn", "true");
 ```
+
+### SSL / TLS
+
+```cpp
+ssl::SslConfig cfg;
+cfg.setCertificateFile("server.crt");
+cfg.setPrivateKeyFile("server.key");
+cfg.setProtocolVersion(ssl::SSLVersion::TLS_1_3);
+
+http::HttpServer server(443, "HttpsServer", /*useSSL=*/true);
+server.setSslConfig(cfg);            // 必须在 start() 之前
+server.start();
+```
+
+每条 SSL 连接走 `asio::ssl::stream<tcp::socket>`，先 `async_handshake` 再进入与明文相同的请求循环。
 
 ---
 
 ## 中间件系统
 
-### 可用中间件
-
 | 中间件 | 功能 | 配置类 |
 |--------|------|--------|
-| `CorsMiddleware` | CORS 预检请求处理、响应头注入 | `CorsConfig` |
+| `CorsMiddleware` | CORS 预检处理、响应头注入 | `CorsConfig` |
 | `CompressMiddleware` | Gzip 响应压缩（zlib） | `CompressConfig` |
 | `RateLimitMiddleware` | 基于 IP 的滑动窗口限流 | `RateLimitConfig` |
-| `LoggingMiddleware` | 结构化访问日志（写入 .log 文件） | 日志文件路径 |
+| `LoggingMiddleware` | 结构化访问日志（写文件） | 日志文件路径 |
 
-### 中间件接口
+### 接口
 
 ```cpp
 class Middleware {
 public:
     virtual ~Middleware() = default;
-    virtual void before(HttpRequest& request) = 0;   // 请求预处理
-    virtual void after(HttpResponse& response) = 0;  // 响应后处理
+    virtual void before(HttpRequest&)  = 0;   // 请求前
+    virtual void after(HttpResponse&)  = 0;   // 响应后
 };
 ```
 
 ### 执行顺序
 
+`before` 按注册顺序执行，`after` 按**逆序**执行（洋葱模型）：
+
 ```
-请求 → Logging(before) → RateLimit(before) → Cors(before) → Compress(before)
-                                                      → Handler
-       Compress(after) ← Cors(after) ← RateLimit(after) ← Logging(after) → 响应
+请求 → Logging.before → RateLimit.before → Cors.before → Compress.before → Handler
+响应 ←── Logging.after ── RateLimit.after ── Cors.after ── Compress.after ──┘
 ```
 
-- `before()` 按注册顺序执行
-- `after()` 按**逆序**执行，保证嵌套正确
+### 自定义
 
-### 添加自定义中间件
-
-1. 继承 `Middleware` 基类
-2. 在 `before()` 实现请求拦截逻辑
-3. 在 `after()` 实现响应拦截逻辑
-4. 通过 `server.addMiddleware(std::make_shared<MyMiddleware>())` 注册
+```cpp
+class MyMw : public http::middleware::Middleware {
+public:
+    void before(http::HttpRequest& req) override { /* ... */ }
+    void after(http::HttpResponse& resp) override { /* ... */ }
+};
+server.addMiddleware(std::make_shared<MyMw>());
+```
 
 ---
 
 ## 应用示例
 
-### MarkdownServer — Markdown 笔记应用
+### MarkdownServer — Markdown 笔记
 
-笔记的增删改查，附带 Web 管理界面：
+无数据库依赖，文件系统存储。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/notes` | 列出所有笔记 |
-| `GET` | `/api/notes/:name` | 获取指定笔记内容 |
-| `POST` | `/api/notes` | 创建新笔记（JSON body） |
+| `GET` | `/api/notes/:name` | 获取指定笔记 |
+| `POST` | `/api/notes` | 创建笔记（JSON body） |
 | `PUT` | `/api/notes/:name` | 更新笔记 |
 | `DELETE` | `/api/notes/:name` | 删除笔记 |
-| `GET` | `/` | Web 首页 |
-| `GET` | `/editor.html` | 编辑器页面 |
+| `GET` | `/`、`/editor.html` | Web 页面 |
 
-```
-中间件链: Logging → Cors → RateLimit → Compress
-访问日志: Apps/MarkdownServer/access.log
-笔记目录: Apps/MarkdownServer/notes/
-```
+- 中间件链：`Logging → Cors → RateLimit → Compress`
+- 日志：`Apps/MarkdownServer/access.log`
+- 笔记目录：`Apps/MarkdownServer/notes/`
 
 ### GomokuServer — 五子棋 AI 对战
 
-用户注册/登录后与 AI 对战五子棋，使用 MySQL 存储用户数据：
+带用户系统（MySQL）与 AI 算法。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/entry` | 登录/注册页面 |
-| `POST` | `/login` | 用户登录 |
-| `POST` | `/register` | 用户注册 |
+| `GET` | `/`、`/entry` | 登录/注册入口 |
+| `POST` | `/login` | 登录 |
+| `POST` | `/register` | 注册 |
 | `POST` | `/user/logout` | 登出 |
 | `GET` | `/menu` | 游戏菜单（需登录） |
 | `GET` | `/aiBot/start` | 开始 AI 对局 |
 | `POST` | `/aiBot/move` | 落子 |
-| `GET` | `/aiBot/restart` | 重新开始 |
+| `GET` | `/aiBot/restart` | 重开 |
 | `GET` | `/backend` | 后台统计页面 |
-| `GET` | `/backend_data` | 在线人数等统计数据（JSON） |
+| `GET` | `/backend_data` | 在线/注册数等（JSON） |
 
+- 中间件链：`Logging → RateLimit → Cors → Compress`
+- AI 棋盘 15×15，玩家执黑先手，AI 执白；策略：检测必杀/必防点 → 评估威胁 → 优先靠近已有棋子位置
+- 资源路径配置：`Apps/GomokuServer/resource_path.json`
+- 默认 MySQL 连接：`tcp://127.0.0.1:3306`，用户 `root`/`root`，库名 `Gomoku`，池大小 10（见 `GomokuServer.cpp`）
+
+#### MySQL 初始化
+
+```bash
+mysql -uroot -p < Apps/GomokuServer/database.sql
+# 或新版 MySQL（8.x）：
+mysql -uroot -p < Apps/GomokuServer/database-8.x.sql
 ```
-中间件链: Logging → RateLimit → Cors → Compress
-访问日志: Apps/GomokuServer/access.log
-资源配置: Apps/GomokuServer/resource_path.json
-```
 
-**AI 算法** (`AiGame`):
-- 棋盘 15×15
-- 玩家执黑（先手），AI 执白
-- 胜利条件：任意方向连续 5 子
-- AI 策略：检测必杀/必防点 → 评估威胁 → 优先靠近已有棋子位置
+如需让 MySQL 监听非本地：
 
-**数据库要求**（MySQL）:
-```sql
-CREATE DATABASE Gomoku;
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(255) UNIQUE,
-    password VARCHAR(255)
-);
+```bash
+bash Apps/GomokuServer/config.sh
 ```
 
 ---
@@ -218,31 +271,48 @@ CREATE TABLE users (
 
 ### 依赖
 
-- Muduo（`muduo_net`, `muduo_base`）
-- OpenSSL（`ssl`, `crypto`）
-- ZLIB
-- MySQL Connector/C++（`mysqlcppconn`, `mysqlclient`）
-- nlohmann/json（头文件）
-- C++17 编译器
+| 必需 | 说明 |
+|------|------|
+| C++20 编译器 | GCC 11+ / Clang 14+ |
+| CMake | ≥ 3.16 |
+| **standalone Asio** | 头文件，安装到 `/usr/include` 或 `/usr/local/include` |
+| **liburing** | pkg-config 可发现（`liburing-dev`） |
+| OpenSSL | `ssl` + `crypto` |
+| zlib | `ZLIB::ZLIB` |
+| GoogleTest | 单元测试 |
+
+| 可选 | 用途 |
+|------|------|
+| nlohmann/json | GomokuServer 必需。未在系统中找到时自动 fallback 到 `third_party/nlohmann/json.hpp` |
+| MySQL Connector/C++ | 启用 DB 连接池与 GomokuServer。未找到时框架仍可编译，DB 层 / GomokuServer 自动跳过 |
+
+CMake 会输出 `HAVE_MYSQL` 状态行，未找到 MySQL 时不会失败，仅跳过 `gomoku_server` 目标。
 
 ### 构建
 
 ```bash
-cd /root/project/HTTPServer
+cd /home/ros/lib/HTTPServer
 mkdir -p build && cd build
 cmake ..
-make          # 同时编译两个应用
+cmake --build . -j
 
 # 或单独编译
-make markdown_server   # MarkdownServer
-make gomoku_server     # GomokuServer（需要 MySQL）
+cmake --build . --target markdown_server
+cmake --build . --target gomoku_server         # 需要 MySQL
+cmake --build . --target bench_server          # 基准
+cmake --build . --target session_test          # GoogleTest
 ```
 
-### 构建产物
+### 产物
 
 ```
-build/markdown_server   # MarkdownServer 可执行文件
-build/gomoku_server     # GomokuServer 可执行文件
+build/markdown_server
+build/gomoku_server          # 若 HAVE_MYSQL=ON
+build/bench_server
+build/session_test
+build/http_request_test
+build/http_context_test
+build/ssl_smoke              # （由 tests/CMakeLists 决定，此处随项目演进）
 ```
 
 ---
@@ -251,107 +321,116 @@ build/gomoku_server     # GomokuServer 可执行文件
 
 ```bash
 # MarkdownServer（默认端口 8080）
-./markdown_server -p 9000
+./build/markdown_server -p 9000
 
-# GomokuServer（默认端口 80，需 MySQL）
-./gomoku_server -p 8080
+# GomokuServer（默认端口 80，需要 MySQL 已初始化）
+sudo ./build/gomoku_server -p 80
+# 或非特权端口
+./build/gomoku_server -p 8000
+
+# 基准服务（无中间件，仅 /hello /json /echo）
+./build/bench_server 9000 4
+```
+
+### 测试
+
+```bash
+cd build
+ctest --output-on-failure
+# 或单独跑
+./session_test
+./http_request_test
+./http_context_test
 ```
 
 ---
 
-## 配置说明
+## 配置示例
 
 ### resource_path.json（GomokuServer）
 
 ```json
 {
-    "Backend":      "Apps/GomokuServer/resource/Backend.html",
+    "Backend":       "Apps/GomokuServer/resource/Backend.html",
     "ChessGameVsAi": "Apps/GomokuServer/resource/ChessGameVsAi.html",
-    "entry":       "Apps/GomokuServer/resource/entry.html",
-    "menu":        "Apps/GomokuServer/resource/menu.html",
-    "NotFound":    "Apps/GomokuServer/resource/NotFound.html"
+    "entry":         "Apps/GomokuServer/resource/entry.html",
+    "menu":          "Apps/GomokuServer/resource/menu.html",
+    "NotFound":      "Apps/GomokuServer/resource/NotFound.html"
 }
 ```
 
-由 `ResourceManager` 单例在服务启动时加载，用于运行时查找 HTML 静态资源路径。
+由 `ResourceManager` 单例在服务启动时加载，运行时供 handler 查找静态资源路径。
 
 ### 中间件配置
 
-**限流**（默认 100 请求/60 秒）:
 ```cpp
-http::middleware::RateLimitConfig config;
-config.maxRequests = 200;
-config.windowSeconds = 60;
-auto rateLimit = std::make_shared<http::middleware::RateLimitMiddleware>(config);
-```
+// 限流（默认 100 请求 / 60 秒）
+http::middleware::RateLimitConfig rl;
+rl.maxRequests   = 200;
+rl.windowSeconds = 60;
+server.addMiddleware(std::make_shared<http::middleware::RateLimitMiddleware>(rl));
 
-**压缩**（默认阈值 256 字节，级别 6）:
-```cpp
-http::middleware::CompressConfig config;
-config.minBodySize = 512;
-config.compressionLevel = 9;
-auto compress = std::make_shared<http::middleware::CompressMiddleware>(config);
-```
+// 压缩（默认阈值 256 字节，级别 6）
+http::middleware::CompressConfig cz;
+cz.minBodySize       = 512;
+cz.compressionLevel  = 9;
+server.addMiddleware(std::make_shared<http::middleware::CompressMiddleware>(cz));
 
-**日志**:
-```cpp
-auto logging = std::make_shared<http::middleware::LoggingMiddleware>("logs/access.log");
-```
+// 访问日志
+server.addMiddleware(
+    std::make_shared<http::middleware::LoggingMiddleware>("logs/access.log"));
 
-**CORS**:
-```cpp
-http::middleware::CorsConfig config;
-config.allowedOrigins = {"*"};
-config.allowCredentials = false;
-config.maxAge = 3600;
-auto cors = std::make_shared<http::middleware::CorsMiddleware>(config);
+// CORS
+http::middleware::CorsConfig cors;
+cors.allowedOrigins   = {"*"};
+cors.allowCredentials = false;
+cors.maxAge           = 3600;
+server.addMiddleware(std::make_shared<http::middleware::CorsMiddleware>(cors));
 ```
 
 ---
 
 ## 扩展指南
 
-### 添加新中间件
+### 新增路由
 
 ```cpp
-// 1. 头文件 HttpServer/include/middleware/myext/MyExtMiddleware.h
-class MyExtMiddleware : public Middleware {
-public:
-    void before(HttpRequest& request) override;
-    void after(HttpResponse& response) override;
-};
-
-// 2. 实现 HttpServer/src/middleware/myext/MyExtMiddleware.cpp
-
-// 3. 在应用中注册
-server.addMiddleware(std::make_shared<MyExtMiddleware>());
-```
-
-### 添加新路由
-
-```cpp
-// Lambda 方式（简单路由）
-server.Get("/api/status", [](const http::HttpRequest& req, http::HttpResponse* resp) {
-    resp->setBody(R"({"status": "ok"})");
+// Lambda 形式
+server.Get("/api/status", [](const http::HttpRequest&, http::HttpResponse* resp) {
     resp->setContentType("application/json");
+    resp->setBody(R"({"status":"ok"})");
 });
 
-// 类方式（复杂逻辑）
+// 类形式
 class StatusHandler : public http::router::RouterHandler {
 public:
-    explicit StatusHandler(Server* srv) : server_(srv) {}
-    void handle(const http::HttpRequest& req, http::HttpResponse* resp) override;
+    void handle(const http::HttpRequest&, http::HttpResponse* resp) override { /* ... */ }
 };
-server.Get("/api/status", std::make_shared<StatusHandler>(this));
+server.Get("/api/status", std::make_shared<StatusHandler>());
 ```
+
+### 新增中间件
+
+1. 继承 `http::middleware::Middleware`，实现 `before/after`
+2. `server.addMiddleware(std::make_shared<MyMw>())`
+
+### 调整日志级别
+
+```cpp
+http::core::log::setLevel(http::core::log::Level::DEBUG);
+```
+
+应用模板默认设为 `WARN`。
 
 ---
 
 ## 技术栈
 
-- **网络**: Muduo（Reactor 模式，多线程事件循环）
-- **语言**: C++17
-- **压缩**: Zlib（gzip）
-- **加密**: OpenSSL（TLS 1.0 - 1.3）
-- **数据库**: MySQL + MySQL Connector/C++
-- **JSON**: nlohmann/json
+- **网络**：standalone Asio + **io_uring**（`ASIO_HAS_IO_URING=1`），one-loop-per-thread
+- **并发**：C++20 协程（`co_await`/`awaitable`），独立 blocking thread_pool 兜底阻塞 handler
+- **语言**：C++20（CMake `CXX_STANDARD 20`）
+- **TLS**：`asio::ssl` + OpenSSL（TLS 1.0–1.3）
+- **压缩**：zlib（gzip）
+- **数据库**：MySQL Connector/C++（带连接池），可选依赖
+- **JSON**：nlohmann/json（系统安装或 vendored）
+- **测试**：GoogleTest + CTest
